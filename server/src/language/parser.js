@@ -778,6 +778,90 @@ export default class Parser {
             }
             break;
 
+          case `EXEC`:
+            if (parts[1] === `SQL`) {
+              if (!parts.includes(`PREPARE`) && !parts.includes(`FINAL`) && !parts.includes(`FETCH`)) {
+                if (parts.includes(`FROM`) 
+                 || parts.includes(`JOIN`) 
+                 || parts.includes(`INTO`) 
+                 || parts.includes(`UPDATE`) 
+                 || parts.includes(`TRUNCATE`)) {
+
+                  let fileName;
+
+                  // A faire de façon récursif (tant que la fonction indexOf() renvoi une valeur)
+                  parts.forEach(async (el, index) => {
+
+                    let potentialFileName;
+
+                    switch (el) {
+                    case `FROM`:
+                      potentialFileName = parts[index+1];
+                      break;
+
+                    case `MERGE`:
+                      potentialFileName = parts[index+2];
+                      break;
+
+                    case `UPDATE`:
+                      potentialFileName = parts[index+1];
+                      break;
+
+                    case `JOIN`:
+                      potentialFileName = parts[index+1];
+                      break;
+
+                    case `TRUNCATE`:
+                      potentialFileName = parts[index+1];
+                      break;
+
+                    default:
+                      break;
+                    }
+
+                    if (potentialFileName) {
+                      const potentialBib = potentialFileName.split(`.`);
+                      if (potentialBib && potentialBib.length > 1) {
+                        fileName = potentialBib[1];
+                      } else {
+                        fileName = potentialFileName;
+                      }
+
+                      if (fileName) {
+                        currentItem = new Declaration(`file`);
+                        currentItem.name = fileName;
+                        currentItem.position = {
+                          path: file,
+                          line: lineNumber
+                        };
+
+                        if (fileName.length <= 10) {
+                          const recordFormats = await this.fetchTable(fileName, fileName.length.toString(), true);
+                          
+                          if (recordFormats.length > 0) {
+                            // Got to fix the positions for the defintions to be the declare.
+                            recordFormats.forEach(recordFormat => {
+                              recordFormat.keywords = [parts[1]];
+                              recordFormat.position = currentItem.position;
+                              recordFormat.subItems.forEach(subItem => {
+                                subItem.position = currentItem.position;
+                              });
+                            });
+                            
+                            currentItem.subItems.push(...recordFormats);
+                          }
+                        }
+  
+                        scope.files.push(currentItem);
+                        resetDefinition = true;
+                      }
+                    }
+                  });
+                }
+              }
+            }
+            break;
+
           case `///`:
             docs = !docs;
           
@@ -823,6 +907,38 @@ export default class Parser {
                 if (dsScopes.length >= 1) {
                   // We do this as there can be many levels to data structures in free format
                   currentItem = dsScopes[dsScopes.length - 1];
+                }
+
+                // Rechercher les instructions SQL
+                // Ne pas tenir compte de PREPARE
+                // Vérifier la présence dans scope.files
+                // ATTENTION: On se retrouve avec un nom long !
+                if (!parts.includes(`PREPARE`) && !parts.includes(`FINAL`)) {
+                  if (parts.includes(`FROM`) 
+                   || parts.includes(`JOIN`) 
+                   || parts.includes(`INTO`) 
+                   || parts.includes(`UPDATE`) 
+                   || parts.includes(`TRUNCATE`)) {
+                    let fileName;
+                    if (parts.includes(`FROM`)) {
+                      const searchFile = parts.match(/.*FROM\s*([^\n\r]*)/);
+                      if (searchFile && searchFile.length > 0) {
+                        let potentialFileName = searchFile[1];
+                        if (potentialFileName.endsWith(`;`)) {
+                          potentialFileName = potentialFileName.substring(1, potentialFileName.length()-1);
+                        }
+                        const potentialBibliotheque = potentialFileName.match(/.*\.\s*([^\n\r]*)/);
+                        if (potentialBibliotheque && potentialBibliotheque.length > 0) {
+                          fileName = potentialBibliotheque[1];
+                        } else {
+                          fileName = potentialFileName;
+                        }
+
+                        if (fileName) {
+                        }
+                      }
+                    }
+                  }
                 }
               }
 
